@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Aura Vision Settings</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            width: 280px;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .header h3 {
+            margin: 0 0 0 10px;
+            font-size: 18px;
+            font-weight: 600;
+            background: -webkit-linear-gradient(45deg, #4285F4, #9B72F2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header img {
+            width: 24px;
+            height: 24px;
+        }
+        label {
+            font-size: 14px;
+            color: #a0a0a0;
+        }
+        select, input[type=range], input[type=checkbox] {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            margin-bottom: 16px;
+            border-radius: 6px;
+            border: 1px solid #444;
+            background-color: #333;
+            color: #e0e0e0;
+            font-size: 14px;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+        input[type=checkbox] {
+            width: auto;
+            cursor: pointer;
+            margin-left: 0;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 10px;
+            border-radius: 6px;
+            border: none;
+            background-color: #4285F4;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #5a9bff;
+        }
+        #status {
+            margin-top: 15px;
+            font-size: 12px;
+            text-align: center;
+            color: #4CAF50;
+            height: 16px;
+        }
+        #history {
+          background-color: #222;
+          padding: 10px;
+          border-radius: 6px;
+          max-height: 120px;
+          overflow-y: auto;
+          font-size: 13px;
+          color: #ddd;
+        }
+        #history h4 {
+          margin-top: 0;
+          font-weight: 600;
+          font-size: 14px;
+        }
+        #history p {
+          margin: 5px 0;
+          cursor: pointer;
+        }
+        #resetBtn {
+          background-color: #f44336;
+          margin-top: 5px;
+        }
+        #resetBtn:hover {
+          background-color: #e57373;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="icons/icon48.png" alt="Aura Vision Icon" />
+        <h3>Aura Vision</h3>
+    </div>
+
+    <label for="language">Description Language:</label>
+    <select id="language" aria-label="Description Language">
+        <option value="en-US">English</option>
+        <option value="pt-BR">Portuguese (Brazil)</option>
+        <option value="es-ES">Spanish</option>
+    </select>
+
+    <label for="ttsRate">Voice Speed (0.5 to 2):</label>
+    <input id="ttsRate" type="range" min="0.5" max="2" step="0.1" value="1" aria-label="Voice Speed" />
+
+    <label for="ttsPitch">Voice Pitch (0.5 to 2):</label>
+    <input id="ttsPitch" type="range" min="0.5" max="2" step="0.1" value="1" aria-label="Voice Pitch" />
+
+    <label><input type="checkbox" id="silentMode" /> Silent Mode (No Speech)</label>
+
+    <button id="save">Save Settings</button>
+    <button id="repeat" title="Repeat last description">Repeat Last Description</button>
+    <button id="resetBtn">Reset to Defaults</button>
+
+    <div id="status" role="alert" aria-live="polite"></div>
+
+    <div id="history">
+      <h4>Last Descriptions</h4>
+      <div id="historyList">Loading...</div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
