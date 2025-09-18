@@ -7,6 +7,7 @@ const repeatButton = document.getElementById('repeat');
 const resetButton = document.getElementById('resetBtn');
 const statusDiv = document.getElementById('status');
 const historyList = document.getElementById('historyList');
+const textHistoryList = document.getElementById('textHistoryList'); // NOVO
 
 function loadSettings() {
   chrome.storage.sync.get({
@@ -40,7 +41,7 @@ function saveSettings() {
       silentMode: settings.silentMode
     });
     saveButton.textContent = "Saved!";
-    saveButton.style.backgroundColor = "#4CAF50"; // verde
+    saveButton.style.backgroundColor = "#4CAF50";
 
     setTimeout(() => {
       statusDiv.textContent = "";
@@ -81,7 +82,7 @@ function loadHistory() {
     }
 
     historyList.innerHTML = "";
-    descriptionHistory.forEach((item, index) => {
+    descriptionHistory.forEach((item) => {
       const p = document.createElement("p");
       p.textContent = `• ${item.description}`;
       p.title = item.url;
@@ -100,6 +101,36 @@ function loadHistory() {
   });
 }
 
+// NOVA FUNÇÃO: carregar histórico de leitura de texto
+function loadTextHistory() {
+  chrome.storage.local.get("textHistory", ({ textHistory }) => {
+    if (!textHistory || textHistory.length === 0) {
+      textHistoryList.innerHTML = "<p>No read texts yet.</p>";
+      return;
+    }
+
+    textHistoryList.innerHTML = "";
+    textHistory.forEach((text) => {
+      const p = document.createElement("p");
+      p.textContent = `• ${text}`;
+      p.title = "Click to read again";
+      p.addEventListener("click", () => {
+        chrome.tts.stop();
+        chrome.storage.sync.get({ language: 'en-US', ttsRate: 1.0, ttsPitch: 1.0, silentMode: false }, (settings) => {
+          if (!settings.silentMode) {
+            chrome.tts.speak(text, {
+              lang: settings.language,
+              rate: settings.ttsRate,
+              pitch: settings.ttsPitch
+            });
+          }
+        });
+      });
+      textHistoryList.appendChild(p);
+    });
+  });
+}
+
 // EVENTOS
 saveButton.addEventListener('click', saveSettings);
 resetButton.addEventListener('click', resetSettings);
@@ -108,4 +139,5 @@ repeatButton.addEventListener('click', repeatLastDescription);
 document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   loadHistory();
+  loadTextHistory(); // NOVO
 });

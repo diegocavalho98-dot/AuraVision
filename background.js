@@ -10,7 +10,6 @@ async function imageUrlToBase64(url) {
       reader.readAsDataURL(blob);
     });
   } catch (e) {
-    // fallback para CORS/proteção, tenta canvas
     return await captureImageViaCanvas(url);
   }
 }
@@ -40,7 +39,7 @@ async function captureImageViaCanvas(imageUrl) {
 }
 
 async function getImageDescription(base64Full, lang) {
-  const apiKey = "AIzaSyB-mq35i6MJUQUFEckM9rvGK1xDrqSjO1A";
+  const apiKey = "AIzaSyA0PkU6Uplj0yKcpPGacvqxKmw4q0Nw6KQ";
   const model = "models/gemini-1.5-flash-latest";
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${apiKey}`;
 
@@ -64,7 +63,6 @@ async function getImageDescription(base64Full, lang) {
     }]
   };
 
-  // Timeout controller para abortar se demorar > 10s
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -91,6 +89,57 @@ async function getImageDescription(base64Full, lang) {
       throw new Error("API request timed out.");
     }
     throw error;
+  }
+}
+
+// NOVO: Traduz texto, se necessário
+async function translateIfNecessary(text, targetLang) {
+  const apiKey = "AIzaSyA0PkU6Uplj0yKcpPGacvqxKmw4q0Nw6KQ";
+  const model = "models/gemini-1.5-flash-latest";
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${apiKey}`;
+
+  const prompt = `Your task is to translate or return text unchanged. Target language: ${targetLang}. Text: "${text}". If already in target language, return it as is. Otherwise, translate. Respond with only the final output.`;
+
+  const requestBody = {
+    contents: [{
+      parts: [{ text: prompt }]
+    }]
+  };
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody)
+  });
+
+  const data = await response.json();
+  const translated = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!translated) throw new Error("Failed to translate.");
+  return translated.trim();
+}
+
+// NOVO: Lê e armazena texto selecionado
+async function processSelectedText(text) {
+  try {
+    const settings = await chrome.storage.sync.get({ language: 'en-US', ttsRate: 1, ttsPitch: 1, silentMode: false });
+    const { language, ttsRate, ttsPitch, silentMode } = settings;
+    if (silentMode) return;
+
+    const translatedText = await translateIfNecessary(text, language);
+
+    chrome.tts.stop();
+    chrome.tts.speak(translatedText, { lang: language, rate: ttsRate, pitch: ttsPitch });
+
+    // Armazenar no histórico de textos (máximo 5)
+    const { textHistory = [] } = await chrome.storage.local.get("textHistory");
+    textHistory.unshift(translatedText);
+    const trimmed = textHistory.slice(0, 5);
+    await chrome.storage.local.set({ textHistory: trimmed });
+
+  } catch (error) {
+    console.error("Text-to-speech error:", error);
+    chrome.tts.stop();
+    chrome.tts.speak("Sorry, the selected text could not be processed.", { lang: "en-US" });
   }
 }
 
@@ -133,19 +182,23 @@ async function processImageAndSpeak(imageUrl) {
   }
 }
 
+// Listener principal
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "describeImage") {
     processImageAndSpeak(message.imageUrl);
   } else if (message.action === "stopSpeaking") {
     chrome.tts.stop();
   } else if (message.action === "repeatLast") {
-    // Repetir última descrição do histórico
     chrome.storage.local.get('descriptionHistory', ({ descriptionHistory }) => {
       if (descriptionHistory && descriptionHistory.length > 0) {
         const last = descriptionHistory[0];
         chrome.storage.sync.get({ language: 'en-US', ttsRate: 1, ttsPitch: 1 }, settings => {
           chrome.tts.stop();
-          chrome.tts.speak(last.description, { lang: settings.language, rate: settings.ttsRate, pitch: settings.ttsPitch });
+          chrome.tts.speak(last.description, {
+            lang: settings.language,
+            rate: settings.ttsRate,
+            pitch: settings.ttsPitch
+          });
         });
       } else {
         chrome.tts.speak("No description to repeat.", { lang: "en-US" });
@@ -160,5 +213,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         pitch: message.ttsPitch
       });
     }
+  } else if (message.action === "processSelectedText") {
+    processSelectedText(message.text);
   }
 });
