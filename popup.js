@@ -5,9 +5,10 @@ const silentModeCheckbox = document.getElementById('silentMode');
 const saveButton = document.getElementById('save');
 const repeatButton = document.getElementById('repeat');
 const resetButton = document.getElementById('resetBtn');
+const summarizeButton = document.getElementById('summarize'); // NOVO
 const statusDiv = document.getElementById('status');
 const historyList = document.getElementById('historyList');
-const textHistoryList = document.getElementById('textHistoryList'); // NOVO
+const textHistoryList = document.getElementById('textHistoryList');
 
 function loadSettings() {
   chrome.storage.sync.get({
@@ -74,6 +75,18 @@ function repeatLastDescription() {
   chrome.runtime.sendMessage({ action: "repeatLast" });
 }
 
+// NOVO: Função para acionar o resumo da página
+function summarizePage() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0] && tabs[0].id) {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "summarizePage" });
+      window.close();
+    } else {
+      console.error("Could not find active tab to summarize.");
+    }
+  });
+}
+
 function loadHistory() {
   chrome.storage.local.get("descriptionHistory", ({ descriptionHistory }) => {
     if (!descriptionHistory || descriptionHistory.length === 0) {
@@ -101,7 +114,6 @@ function loadHistory() {
   });
 }
 
-// NOVA FUNÇÃO: carregar histórico de leitura de texto
 function loadTextHistory() {
   chrome.storage.local.get("textHistory", ({ textHistory }) => {
     if (!textHistory || textHistory.length === 0) {
@@ -135,9 +147,10 @@ function loadTextHistory() {
 saveButton.addEventListener('click', saveSettings);
 resetButton.addEventListener('click', resetSettings);
 repeatButton.addEventListener('click', repeatLastDescription);
+summarizeButton.addEventListener('click', summarizePage); // NOVO
 
 document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   loadHistory();
-  loadTextHistory(); // NOVO
+  loadTextHistory();
 });

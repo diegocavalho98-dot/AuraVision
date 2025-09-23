@@ -10,7 +10,6 @@ document.body.addEventListener("mouseover", (event) => {
 
     currentTarget = imageElement;
 
-    // Mostra tooltip
     imageElement.title = "Descrição da imagem será falada em breve";
 
     hoverTimer = setTimeout(() => {
@@ -54,5 +53,27 @@ document.addEventListener("selectionchange", () => {
         text: selectedText
       });
     }
-  }, 1000); // Aguarda 1 segundo após parar a seleção
+  }, 1000);
+});
+
+// === Listener para Ação de Resumir a Página ===
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "summarizePage") {
+    try {
+      const documentClone = document.cloneNode(true);
+      const article = new Readability(documentClone).parse();
+
+      if (article && article.textContent) {
+        chrome.runtime.sendMessage({
+          action: "summarizeAndSpeak",
+          text: article.textContent
+        });
+      } else {
+        chrome.runtime.sendMessage({ action: "summarizeFailed" });
+      }
+    } catch (e) {
+      console.error("Readability failed:", e);
+      chrome.runtime.sendMessage({ action: "summarizeFailed" });
+    }
+  }
 });

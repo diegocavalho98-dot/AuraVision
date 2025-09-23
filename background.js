@@ -1,3 +1,4 @@
+// Função para converter URL de imagem para Base64 via fetch
 async function imageUrlToBase64(url) {
   try {
     const response = await fetch(url, { mode: 'cors' });
@@ -14,6 +15,7 @@ async function imageUrlToBase64(url) {
   }
 }
 
+// Função de fallback para capturar imagem via Canvas
 async function captureImageViaCanvas(imageUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -38,6 +40,7 @@ async function captureImageViaCanvas(imageUrl) {
   });
 }
 
+// Função para obter descrição da imagem da API Gemini
 async function getImageDescription(base64Full, lang) {
   const apiKey = "AIzaSyA0PkU6Uplj0yKcpPGacvqxKmw4q0Nw6KQ";
   const model = "models/gemini-1.5-flash-latest";
@@ -60,7 +63,13 @@ async function getImageDescription(base64Full, lang) {
         { text: promptText },
         { inline_data: { mime_type: mimeType, data: base64Data } }
       ]
-    }]
+    }],
+    safetySettings: [ // Adicionado para maior confiabilidade
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+    ]
   };
 
   const controller = new AbortController();
@@ -80,7 +89,11 @@ async function getImageDescription(base64Full, lang) {
     }
 
     const result = await response.json();
-    const description = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!result.candidates || result.candidates.length === 0) {
+      console.warn("API returned no candidates for image description.", result);
+      throw new Error("No valid response from API.");
+    }
+    const description = result.candidates[0]?.content?.parts?.[0]?.text;
     if (!description) throw new Error("Description not found in API response.");
 
     return description;
@@ -92,18 +105,34 @@ async function getImageDescription(base64Full, lang) {
   }
 }
 
-// NOVO: Traduz texto, se necessário
+// CORRIGIDO: Função para traduzir texto, com prompt melhorado
 async function translateIfNecessary(text, targetLang) {
   const apiKey = "AIzaSyA0PkU6Uplj0yKcpPGacvqxKmw4q0Nw6KQ";
   const model = "models/gemini-1.5-flash-latest";
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${apiKey}`;
 
-  const prompt = `Your task is to translate or return text unchanged. Target language: ${targetLang}. Text: "${text}". If already in target language, return it as is. Otherwise, translate. Respond with only the final output.`;
+  const languageMap = {
+    'en-US': 'English',
+    'pt-BR': 'Brazilian Portuguese',
+    'es-ES': 'Spanish'
+  };
+  const targetLanguageName = languageMap[targetLang] || 'English';
+
+  const prompt = `First, identify the language of the following text. 
+If the text is already in ${targetLanguageName}, return the original text exactly as it is.
+If the text is NOT in ${targetLanguageName}, translate it to ${targetLanguageName}.
+Respond ONLY with the final text (either the original or the translated one), without any extra explanations or introductory phrases.
+
+Text: "${text}"`;
 
   const requestBody = {
-    contents: [{
-      parts: [{ text: prompt }]
-    }]
+    contents: [{ parts: [{ text: prompt }] }],
+    safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+    ]
   };
 
   const response = await fetch(endpoint, {
@@ -112,13 +141,29 @@ async function translateIfNecessary(text, targetLang) {
     body: JSON.stringify(requestBody)
   });
 
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("Translation API Error:", response.status, errorBody);
+    throw new Error(`API Error during translation: ${response.status}`);
+  }
+
   const data = await response.json();
-  const translated = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!translated) throw new Error("Failed to translate.");
+
+  if (!data.candidates || data.candidates.length === 0) {
+    console.warn("Translation API returned no candidates.", data);
+    return text; // Retorna o texto original como fallback em caso de bloqueio
+  }
+  
+  const translated = data.candidates[0]?.content?.parts?.[0]?.text;
+  if (!translated) {
+    throw new Error("Failed to translate.");
+  }
+  
   return translated.trim();
 }
 
-// NOVO: Lê e armazena texto selecionado
+
+// Função para ler e armazenar texto selecionado
 async function processSelectedText(text) {
   try {
     const settings = await chrome.storage.sync.get({ language: 'en-US', ttsRate: 1, ttsPitch: 1, silentMode: false });
@@ -130,7 +175,6 @@ async function processSelectedText(text) {
     chrome.tts.stop();
     chrome.tts.speak(translatedText, { lang: language, rate: ttsRate, pitch: ttsPitch });
 
-    // Armazenar no histórico de textos (máximo 5)
     const { textHistory = [] } = await chrome.storage.local.get("textHistory");
     textHistory.unshift(translatedText);
     const trimmed = textHistory.slice(0, 5);
@@ -145,15 +189,14 @@ async function processSelectedText(text) {
 
 // Cache simples para base64 já processados (por URL)
 const base64Cache = new Map();
-
-// Cache simples para últimas descrições (url -> description)
+// Histórico de descrições em memória (será salvo no storage)
 const descriptionHistory = [];
 
+// Função principal para processar imagem e falar
 async function processImageAndSpeak(imageUrl) {
   try {
     const settings = await chrome.storage.sync.get({ language: 'en-US', ttsRate: 1, ttsPitch: 1, silentMode: false });
     const { language, ttsRate, ttsPitch, silentMode } = settings;
-
     if (silentMode) return;
 
     chrome.tts.stop();
@@ -166,15 +209,12 @@ async function processImageAndSpeak(imageUrl) {
     }
 
     const description = await getImageDescription(base64, language);
-
-    // Armazena no histórico (máx 5)
     descriptionHistory.unshift({ url: imageUrl, description });
     if (descriptionHistory.length > 5) descriptionHistory.pop();
     await chrome.storage.local.set({ descriptionHistory });
 
     chrome.tts.stop();
     chrome.tts.speak(description, { lang: language, rate: ttsRate, pitch: ttsPitch });
-
   } catch (error) {
     console.error("Aura Vision Error:", error);
     chrome.tts.stop();
@@ -182,7 +222,69 @@ async function processImageAndSpeak(imageUrl) {
   }
 }
 
-// Listener principal
+// Função para resumir texto e falar
+async function summarizeAndSpeak(text) {
+  try {
+    const settings = await chrome.storage.sync.get({ language: 'en-US', ttsRate: 1, ttsPitch: 1, silentMode: false });
+    const { language, ttsRate, ttsPitch, silentMode } = settings;
+    if (silentMode) return;
+
+    chrome.tts.stop();
+    chrome.tts.speak("Summarizing page...", { lang: language, rate: ttsRate, pitch: ttsPitch });
+
+    const apiKey = "AIzaSyA0PkU6Uplj0yKcpPGacvqxKmw4q0Nw6KQ";
+    const model = "models/gemini-1.5-flash-latest";
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${apiKey}`;
+
+    const prompt = `You are an expert summarizer. Your task is to provide a clear and concise summary of the following text, focusing on the main points. The summary must be in the following language: ${language}. Text: "${text}"`;
+
+    const requestBody = {
+      contents: [{ parts: [{ text: prompt }] }],
+      safetySettings: [ // Adicionado para maior confiabilidade
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+      ]
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status} - ${await response.text()}`);
+    }
+
+    const result = await response.json();
+    if (!result.candidates || result.candidates.length === 0) {
+      console.warn("API returned no candidates for summary.", result);
+      throw new Error("No valid response from API for summary.");
+    }
+    const summary = result.candidates[0]?.content?.parts?.[0]?.text;
+    if (!summary) throw new Error("Summary not found in API response.");
+
+    chrome.tts.stop();
+    chrome.tts.speak(summary.trim(), { lang: language, rate: ttsRate, pitch: ttsPitch });
+  } catch (error) {
+    console.error("Summarization Error:", error);
+    chrome.tts.stop();
+    let errorMessage = "Sorry, the page could not be summarized.";
+    if (error.name === 'AbortError') {
+      errorMessage = "The summarization request timed out.";
+    }
+    chrome.tts.speak(errorMessage, { lang: "en-US" });
+  }
+}
+
+// Listener principal de mensagens
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "describeImage") {
     processImageAndSpeak(message.imageUrl);
@@ -215,5 +317,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   } else if (message.action === "processSelectedText") {
     processSelectedText(message.text);
+  } else if (message.action === "summarizeAndSpeak") {
+    summarizeAndSpeak(message.text);
+  } else if (message.action === "summarizeFailed") {
+    chrome.tts.speak("Sorry, the page content could not be extracted for summarization.", { lang: "en-US" });
   }
 });
